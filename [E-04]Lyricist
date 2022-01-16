@@ -1,0 +1,707 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "222f1f90",
+   "metadata": {},
+   "source": [
+    "# 모듈 불러오기"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "9460d1bb",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import glob\n",
+    "import os\n",
+    "import re\n",
+    "import numpy as np\n",
+    "import tensorflow as tf\n",
+    "from sklearn.model_selection import train_test_split"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "590c7bc2",
+   "metadata": {},
+   "source": [
+    "# 데이터 불러오기"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "f4e737c5",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "데이터 크기: 187088\n",
+      "Examples:\n",
+      " That David played, and it pleased the Lord\n"
+     ]
+    }
+   ],
+   "source": [
+    "txt_file_path = os.getenv('HOME') +'/aiffel/lyricist/data/lyrics/*'\n",
+    "\n",
+    "txt_list = glob.glob(txt_file_path)\n",
+    "\n",
+    "Raw_corpus = []\n",
+    "\n",
+    "#여러 개의 텍스트 파일을 Raw_corpus 리스트에 추가\n",
+    "for txt_file in txt_list:\n",
+    "    with open(txt_file, \"r\") as f:\n",
+    "        Raw = f.read().splitlines()\n",
+    "        Raw_corpus.extend(Raw)\n",
+    "        \n",
+    "print(\"데이터 크기:\", len(Raw_corpus))\n",
+    "print(\"Examples:\\n\", Raw_corpus[1])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c84d3ff1",
+   "metadata": {},
+   "source": [
+    "**Raw_corpus에 담긴 문장들 살펴보기**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "84a876c3",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0 Now I've heard there was a secret chord\n",
+      "1 That David played, and it pleased the Lord\n",
+      "2 But you don't really care for music, do you?\n",
+      "3 It goes like this\n",
+      "4 The fourth, the fifth\n",
+      "5 The minor fall, the major lift\n",
+      "6 The baffled king composing Hallelujah Hallelujah\n",
+      "7 Hallelujah\n",
+      "8 Hallelujah\n",
+      "9 Hallelujah Your faith was strong but you needed proof\n",
+      "10 You saw her bathing on the roof\n",
+      "11 Her beauty and the moonlight overthrew her\n",
+      "12 She tied you\n",
+      "13 To a kitchen chair\n",
+      "14 She broke your throne, and she cut your hair\n",
+      "15 And from your lips she drew the Hallelujah Hallelujah\n",
+      "16 Hallelujah\n",
+      "17 Hallelujah\n",
+      "18 Hallelujah You say I took the name in vain\n",
+      "19 I don't even know the name\n"
+     ]
+    }
+   ],
+   "source": [
+    "for idx, r in enumerate(Raw_corpus[:20]):\n",
+    "    print(idx, r)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "79013f20",
+   "metadata": {},
+   "source": [
+    "# 데이터 전처리"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "968631bb",
+   "metadata": {},
+   "source": [
+    "## 토큰화"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "351eb24e",
+   "metadata": {},
+   "source": [
+    "### 정규표현식"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1855550f",
+   "metadata": {},
+   "source": [
+    "입력된 문장을\n",
+    "\n",
+    "    1. 소문자로 바꾸고, 양쪽 공백을 지움\n",
+    "    2. 특수문자 양쪽에 공백을 넣고\n",
+    "    3. 여러 개의 공백은 하나의 공백으로 바꿈\n",
+    "    4. a-zA-Z?.!,¿ 가 아닌 모든 문자를 하나의 공백으로 바꿈\n",
+    "    5. 다시 양쪽의 공백을 지움\n",
+    "    6. 문장의 시작에는 <start>, 끝에는 <end>를 추가"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "ce88dc12",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<start> i m the iron man <end>\n"
+     ]
+    }
+   ],
+   "source": [
+    "#정제 함수\n",
+    "def preprocess_st(st):\n",
+    "    #1\n",
+    "    st = st.lower().strip()\n",
+    "    #2\n",
+    "    st = re.sub(r\"([?.!,¿])\", r\" \\1 \", st)\n",
+    "    #3\n",
+    "    st = re.sub(r'[\" \"]+', \" \", st)\n",
+    "    #4\n",
+    "    st = re.sub(r\"[^a-zA-Z?.!,¿]+\", \" \", st)\n",
+    "    #5\n",
+    "    st = st.strip()\n",
+    "    #6\n",
+    "    st = '<start> ' + st + ' <end>'\n",
+    "    return st\n",
+    "\n",
+    "print(preprocess_st(\"I @m      the Iron  MAN^^\"))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c3dd07ba",
+   "metadata": {},
+   "source": [
+    "- strip() : 맨 앞과 맨 뒤의 공백을 제거하는 함수"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "90ef0bcd",
+   "metadata": {},
+   "source": [
+    "## 정제데이터 구축"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0fe91dad",
+   "metadata": {},
+   "source": [
+    "정제 함수를 통해 만든 데이터셋에서 토큰화를 진행\n",
+    "\n",
+    "끝 단어 < end >를 없애면 소스 문장\n",
+    "\n",
+    "첫 단어 < start >를 없애면 타겟 문장"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "423c2bb7",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['<start> now i ve heard there was a secret chord <end>',\n",
+       " '<start> that david played , and it pleased the lord <end>',\n",
+       " '<start> but you don t really care for music , do you ? <end>',\n",
+       " '<start> it goes like this <end>',\n",
+       " '<start> the fourth , the fifth <end>']"
+      ]
+     },
+     "execution_count": 5,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "corpus = []\n",
+    "\n",
+    "for st in Raw_corpus:\n",
+    "    #문장의 길이가 0인 문장은 무시\n",
+    "    if len(st) == 0: continue\n",
+    "    if st[-1] == \":\" : continue\n",
+    "       \n",
+    "    preprocessed_st = preprocess_st(st)\n",
+    "    corpus.append(preprocessed_st)\n",
+    "    \n",
+    "corpus[:5]\n",
+    "# 첫 단어가 <start>, 끝 단어가 <end> 형식으로 맞춰짐"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "caf209d6",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def tokenize(corpus):\n",
+    "    tokenizer = tf.keras.preprocessing.text.Tokenizer(\n",
+    "        # 12,000개의 단어를 기억할 수 있는 tokenizer\n",
+    "        # 위에서 이미 정제를 했기 때문에 filter는 불필요\n",
+    "        # 12,000개의 단어에 포함되지 못한 단어는 '<Unknown>'으로 설정\n",
+    "        num_words = 12000,\n",
+    "        filters = ' ',\n",
+    "        oov_token = '<Unknown>')\n",
+    "    \n",
+    "    # corpus를 이용해 tokenizer 내부의 단어장 형성\n",
+    "    tokenizer.fit_on_texts(corpus)\n",
+    "    \n",
+    "    # tokenizer를 이용해 corpus를 tensor로 변환\n",
+    "    tensor = tokenizer.texts_to_sequences(corpus)\n",
+    "    \n",
+    "    # 토큰화 했을 때 토큰의 개수가 15개를 넘어가는 문장을 학습 데이터에서 제외\n",
+    "    tensor_short = []\n",
+    "    for i in range(len(tensor)-1):\n",
+    "        if len(tensor[i]) <= 15: \n",
+    "            tensor_short.append(tensor[i])\n",
+    "            \n",
+    "    # 입력 데이터의 시퀀스 길이를 일정하게 맞춰줌\n",
+    "    # 시퀀스가 짧을 경우, 문장 뒤에 패딩을 붙여 길이를 맞춰줌\n",
+    "    tensor_short = tf.keras.preprocessing.sequence.pad_sequences(tensor_short, padding='post')\n",
+    "\n",
+    "    print(tensor_short, tokenizer)\n",
+    "    return tensor_short, tokenizer\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "8e2062e7",
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[[   2   50    5 ...    0    0    0]\n",
+      " [   2   17 2639 ...    0    0    0]\n",
+      " [   2   36    7 ...   43    3    0]\n",
+      " ...\n",
+      " [   2  703   29 ...    0    0    0]\n",
+      " [   2    5  107 ...    0    0    0]\n",
+      " [   2  261  200 ...   12    3    0]] <keras_preprocessing.text.Tokenizer object at 0x7f1acd2c5610>\n"
+     ]
+    }
+   ],
+   "source": [
+    "tensor_short, tokenizer = tokenize(corpus)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "3062a89c",
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[[   2   50    5   91  297   65   57    9  969 6042    3    0    0    0\n",
+      "     0]\n",
+      " [   2   17 2639  873    4    8   11 6043    6  329    3    0    0    0\n",
+      "     0]\n",
+      " [   2   36    7   37   15  164  282   28  299    4   47    7   43    3\n",
+      "     0]]\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(tensor_short[:3, :])\n",
+    "#tensor[문장, 토큰]\n",
+    "#모두 정수로 이루어짐\n",
+    "#tokenizer에 구축된 단어 사전의 인덱스"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "59b8717d",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "1 : <Unknown>\n",
+      "2 : <start>\n",
+      "3 : <end>\n",
+      "4 : ,\n",
+      "5 : i\n",
+      "6 : the\n",
+      "7 : you\n",
+      "8 : and\n",
+      "9 : a\n",
+      "10 : to\n"
+     ]
+    }
+   ],
+   "source": [
+    "for idx in tokenizer.index_word:\n",
+    "    print(idx, \":\", tokenizer.index_word[idx])\n",
+    "\n",
+    "    if idx >= 10: break"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3d2da0b0",
+   "metadata": {},
+   "source": [
+    "## 평가 데이터셋 분리"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "d5c817ad",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[   2   50    5   91  297   65   57    9  969 6042    3    0    0    0]\n",
+      "[  50    5   91  297   65   57    9  969 6042    3    0    0    0    0]\n"
+     ]
+    }
+   ],
+   "source": [
+    "#tensor에서 마지막 토큰을 잘라내 소스 문장을 생성\n",
+    "source = tensor_short[:, :-1]\n",
+    "\n",
+    "#tensor에서 <start>를 잘라내서 타겟 문장을 생성\n",
+    "target = tensor_short[:, 1:]\n",
+    "\n",
+    "print(source[0])\n",
+    "print(target[0])\n",
+    "\n",
+    "# 0-> pad"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "56b85e85",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "enc_train, enc_val, dec_train, dec_val = train_test_split(source, target, test_size = 0.2, \n",
+    "                                                          random_state = 1004)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "599d9641",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Source Train: (124809, 14)\n",
+      "Target Train: (124809, 14)\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Source Train:\", enc_train.shape)\n",
+    "print(\"Target Train:\", dec_train.shape)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5558a78f",
+   "metadata": {},
+   "source": [
+    "# 모델 생성"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "60349142",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class TextGenerator(tf.keras.Model):\n",
+    "    def __init__(self, vocab_size, embedding_size, hidden_size):\n",
+    "        super().__init__()\n",
+    "        \n",
+    "        self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_size)  #embedding layer\n",
+    "        self.rnn_1 = tf.keras.layers.LSTM(hidden_size, return_sequences = True)  #LSTM layer\n",
+    "        self.rnn_2 = tf.keras.layers.LSTM(hidden_size, return_sequences = True)  #LSTM layer\n",
+    "        self.linear = tf.keras.layers.Dense(vocab_size)   #Denselayer\n",
+    "        \n",
+    "    def call(self, x):\n",
+    "        out = self.embedding(x)\n",
+    "        out = self.rnn_1(out)\n",
+    "        out = self.rnn_2(out)\n",
+    "        out = self.linear(out)\n",
+    "        \n",
+    "        return out\n",
+    "    \n",
+    "embedding_size = 1024\n",
+    "hidden_size = 2048\n",
+    "model = TextGenerator(tokenizer.num_words + 1, embedding_size, hidden_size)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "56fbf2bf",
+   "metadata": {},
+   "source": [
+    "# 모델 학습"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "b4952960",
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch 1/8\n",
+      "3901/3901 [==============================] - 498s 118ms/step - loss: 2.8789 - val_loss: 2.6086\n",
+      "Epoch 2/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 2.3155 - val_loss: 2.3629\n",
+      "Epoch 3/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 1.8744 - val_loss: 2.2303\n",
+      "Epoch 4/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 1.5431 - val_loss: 2.1962\n",
+      "Epoch 5/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 1.3228 - val_loss: 2.2108\n",
+      "Epoch 6/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 1.1920 - val_loss: 2.2546\n",
+      "Epoch 7/8\n",
+      "3901/3901 [==============================] - 475s 122ms/step - loss: 1.1198 - val_loss: 2.2991\n",
+      "Epoch 8/8\n",
+      "3901/3901 [==============================] - 476s 122ms/step - loss: 1.0807 - val_loss: 2.3421\n",
+      "{'loss': [2.8788976669311523, 2.3154611587524414, 1.8744287490844727, 1.5430525541305542, 1.322795033454895, 1.1919896602630615, 1.1197575330734253, 1.0807243585586548], 'val_loss': [2.6086437702178955, 2.3628575801849365, 2.230283737182617, 2.1962475776672363, 2.2107558250427246, 2.2545652389526367, 2.2990899085998535, 2.342099189758301]}\n"
+     ]
+    }
+   ],
+   "source": [
+    "#tf.random.set_seed(210)   #같은 값을 도출하기 위해 seed 고정\n",
+    "\n",
+    "optimizer = tf.keras.optimizers.Adam()\n",
+    "loss = tf.keras.losses.SparseCategoricalCrossentropy(\n",
+    "    from_logits = True,\n",
+    "    reduction = 'none')\n",
+    "\n",
+    "model.compile(loss=loss, optimizer=optimizer)\n",
+    "history = model.fit(enc_train, dec_train, epochs=8, validation_data=(enc_val, dec_val))\n",
+    "print(history.history)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "abd12f14",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "2.1962475776672363"
+      ]
+     },
+     "execution_count": 15,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "min(history.history['val_loss'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "a32bcada",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "plt.plot(history.history['loss'])\n",
+    "plt.plot(history.history['val_loss'])\n",
+    "plt.title('Model loss')\n",
+    "plt.xlabel('Epoch')\n",
+    "plt.ylabel('Loss')\n",
+    "plt.legend(['Train', 'Test'], loc='upper left')\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b53c498c",
+   "metadata": {},
+   "source": [
+    "# 모델 평가"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "id": "f0d1b189",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def generate_text(model, tokenizer, init_sentence=\"<start>\", max_len = 20):\n",
+    "    #테스트를 위해서 입력받은 init_sentence도 텐서로 변환\n",
+    "    test_input = tokenizer.texts_to_sequences([init_sentence])\n",
+    "    test_tensor = tf.convert_to_tensor(test_input, dtype=tf.int64)\n",
+    "    end_token = tokenizer.word_index[\"<end>\"]\n",
+    "    \n",
+    "    #단어 하나씩 예측해 문장을 만듦\n",
+    "    #    1. 입력받은 문장의 텐서를 입력\n",
+    "    #    2. 예측된 값 중 가장 높은 확률인 word index를 뽑아냄\n",
+    "    #    3. 2에서 에측된 word index 를 문장 뒤에 붙임\n",
+    "    #    4. 모델이 <end>를 예측했거나, max_len에 도달했다면 문장 생성을 마침\n",
+    "    while True:\n",
+    "        #1\n",
+    "        predict = model(test_tensor)\n",
+    "        #2\n",
+    "        predict_word = tf.argmax(tf.nn.softmax(predict, axis= -1), axis=-1)[:,-1]\n",
+    "        #3\n",
+    "        test_tensor = tf.concat([test_tensor, tf.expand_dims(predict_word, axis=0)], axis=-1)\n",
+    "        #4\n",
+    "        if predict_word.numpy()[0] == end_token: break\n",
+    "        if test_tensor.shape[1] >= max_len: break\n",
+    "            \n",
+    "    generated = \"\"\n",
+    "    #tokenizer를 이용해 word index를 단어로 하나씩 변환\n",
+    "    for word_index in test_tensor[0].numpy():\n",
+    "        generated += tokenizer.index_word[word_index] + \" \"\n",
+    "        \n",
+    "    return generated"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "id": "ad8ce7ec",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'<start> i love the way you shake your thing <end> '"
+      ]
+     },
+     "execution_count": 18,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "generate_text(model, tokenizer, init_sentence=\"<start> i love\", max_len=20)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "10b0a88c",
+   "metadata": {},
+   "source": [
+    "# 회고"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "7371fa7b",
+   "metadata": {},
+   "source": [
+    "- 너무 지저분하고 더러운 문장이 도출되었다........ 도대체 원본 데이터가 어떻게 되어있길래 이런 문장이 나온 걸까 싶다. 말이 안되진 않지만 몹시 당황스럽다..\n",
+    "\n",
+    "\n",
+    "- 데이터 사이즈를 특정 값에 맞춰야 한다고 써있어서 한 시간 반을 소요했다. 추후에 그 특정 값 이하면 상관없다고 말씀하셔서 허탈했다.\n",
+    "\n",
+    "\n",
+    "- 보통 embedding size와 hidden size는 2의 제곱수로 설정한다고 알고 있는데 val_loss 값을 떨어트리기 위해 2의 제곱수가 아닌 수들도 시도를 했다. 하지만 결국 2의 제곱수에서 2.2 이하의 val_loss를 도출할 수 있었다. 사람들이 주로 하는 데는 다 이유가 있다.\n",
+    "\n",
+    "\n",
+    "- hidden layer와 embedding layer를 늘릴수록 낮은 epoch에서 오버피팅이 발견됐다. 하지만 그만큼 낮은 epoch에서 좋은 성능이 나와 높은 layer를 유지했고, epoch 수를 줄였다.\n",
+    "\n",
+    "\n",
+    "- 텍스트 데이터를 다루는 머신러닝/딥러닝 프로젝트를 조금 더 접해보고 싶다. 물론 이번 프로젝트도 쉽지 않았지만, 더 많은 내용들이 있을 것 같다.\n",
+    "\n",
+    "\n",
+    "- 정규표현식을 마주할 때마다 매번 새롭다. NLP를 계속 접하면 보다 익숙해지겠거니 싶다. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "56fbaa14",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
